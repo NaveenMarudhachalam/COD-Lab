@@ -1,39 +1,63 @@
 .data
-number: .word 12321               # Example number to check (you can change this)
-result: .word 0                   # Storage for palindrome result (1 for palindrome, 0 for not)
+numbers: .word 1221, 12321, 1234, 44544  # Array of numbers to check
+N:       .word 4                         # Number of elements in the array
+results: .word 0,0,0,0                       # Space for results (4 bytes for each number)
 
 .text
-.globl main
-main:
-    lw x10, number                 # Load the number into x10
-    li x11, 0                       # Initialize reversed number to 0
-    li x12, 0                       # Initialize original number for comparison
-    li x13, 10                      # Set divisor for digit extraction
+.globl _start
 
-# Save the original number
-    mv x12, x10                    # Store original number in x12
+_start:
+    la t0, numbers          # Load address of numbers into t0
+    lw t1, N                # Load number of elements into t1
+    la t2, results          # Load address of results into t2
+    li t3, 0                # Initialize index to 0
+    li x20,10
+check_loop:
+    bge t3, t1, end         # If index >= N, end
+    lw t4, 0(t0)            # Load the current number into t4
+    jal ra, is_palindrome   # Call is_palindrome subroutine
+    sw a0, 0(t2)            # Store result in results array
+    addi t0, t0, 4          # Move to the next number (4 bytes)
+    addi t2, t2, 4          # Move to the next result space
+    addi t3, t3, 1          # Increment index
+    j check_loop            # Repeat for the next number
 
-reverse_loop:
-    beq x10, zero, compare         # If x10 is 0, we are done reversing
-    rem x14, x10, x13              # Get the last digit (x10 % 10)
-    add x11, x11, x14              # Add the digit to the reversed number
-    mul x11, x11, x13              # Shift left (multiply by 10)
-    div x10, x10, x13              # Remove the last digit (x10 / 10)
-    j reverse_loop                  # Repeat the loop
-
-compare:
-    # At this point, x11 contains the reversed number and x12 contains the original number
-    beq x11, x12, is_palindrome     # If reversed number equals original, it's a palindrome
-    li x14, 0                        # Not a palindrome
-    j store_result                   # Jump to store result
-
+# Subroutine: is_palindrome
 is_palindrome:
-    li x14, 1                        # It is a palindrome
+    mv t5, t4               # Copy the number into t5 for manipulation
+    li a0, 1                # Assume it is a palindrome (default result)
 
-store_result:
-    la x21, result                  # Load address of the result variable
-    sw x14, 0(x21)                  # Store result (1 or 0) in memory
+    # Push digits onto the stack
+    mv t6, sp               # Save the current stack pointer
+push_digits:
+    rem x21, t5, x20          # Get the last digit
+    addi sp, sp, -4         # Adjust stack pointer for push
+    sw x21, 0(sp)            # Push the digit onto the stack
+    div t5, t5, x20          # Remove the last digit
+    bnez t5, push_digits    # Repeat until all digits are pushed
 
-exit:
-    li a7, 10                        # Syscall for exit
+    mv t5, t4               # Restore the original number to t5
+
+# Compare digits using the stack
+compare_digits:
+    lw x21, 0(sp)            # Pop the top digit from the stack
+    addi sp, sp, 4          # Adjust stack pointer for pop
+    rem x22, t5, x20          # Get the last digit of the number
+    div t5, t5, x20          # Remove the last digit
+    bne x21, x22, not_palindrome # If digits don’t match, not a palindrome
+    bnez t5, compare_digits # Continue if there are more digits to compare
+
+    # If all digits matched, it’s a palindrome
+    j end_palindrome
+
+not_palindrome:
+    li a0, 0                # Set result to 0 (not a palindrome)
+
+end_palindrome:
+    mv sp, t6               # Restore the stack pointer
+    jalr x0, ra, 0          # Return to the caller
+
+end:
+    # Exit program
+    li a7, 10               # Syscall for exit
     ecall
